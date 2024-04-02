@@ -7,7 +7,9 @@ import (
 
 func main() {
 	const port = "8080"
+	const filePathRoot = "."
 	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir(filePathRoot)))
 	corsMux := middlewareCors(mux)
 	srv := &http.Server{
 		Addr:    ":" + port,
