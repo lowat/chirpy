@@ -3,8 +3,11 @@ package database
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"sync"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type DB struct {
@@ -13,12 +16,19 @@ type DB struct {
 }
 
 type DBStructure struct {
-	Chirps map[int]Chirp `json:"chirps"`
+	Chirps map[int]Chirp   `json:"chirps"`
+	Users  map[string]User `json:"users"`
 }
 
 type Chirp struct {
 	ID   int    `json:"id"`
 	Body string `json:"body"`
+}
+
+type User struct {
+	ID       int    `json:"id"`
+	Email    string `json:"email"`
+	Password []byte `json:"password"`
 }
 
 func NewDB(path string) (*DB, error) {
@@ -68,6 +78,7 @@ func (db *DB) GetChirps() ([]Chirp, error) {
 func (db *DB) createDB() error {
 	dbStructure := DBStructure{
 		Chirps: map[int]Chirp{},
+		Users:  map[string]User{},
 	}
 	return db.writeDB(dbStructure)
 }
@@ -111,4 +122,65 @@ func (db *DB) writeDB(dbStructure DBStructure) error {
 		return err
 	}
 	return nil
+}
+
+func (db *DB) GetChirpsByID(id int) (Chirp, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return Chirp{}, err
+	}
+
+	chirps := make([]Chirp, 0, len(dbStructure.Chirps))
+	for _, chirp := range dbStructure.Chirps {
+		chirps = append(chirps, chirp)
+	}
+	if (id-1) < 0 || (id-1) >= len(chirps) {
+		return Chirp{}, errors.New("Provided ID is out of range")
+	}
+
+	return chirps[id-1], nil
+}
+
+func (db *DB) CreateUser(email string, password string) (User, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+	log.Printf("%v", password)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 1)
+	log.Printf("%v", hash)
+	if err != nil {
+		return User{}, err
+	}
+
+	id := len(dbStructure.Users) + 1
+	user := User{
+		Email:    email,
+		Password: hash,
+		ID:       id,
+	}
+	dbStructure.Users[email] = user
+
+	err = db.writeDB(dbStructure)
+	if err != nil {
+		return User{}, err
+	}
+
+	return user, nil
+}
+
+func (db *DB) Login(email string, password string) (User, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+	retrievedUser := dbStructure.Users[email]
+
+	err = bcrypt.CompareHashAndPassword(retrievedUser.Password, []byte(password))
+
+	if err != nil {
+		return User{}, err
+	}
+
+	return retrievedUser, nil
 }
